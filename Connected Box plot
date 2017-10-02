@@ -1,0 +1,24 @@
+import numpy as np
+import matplotlib.pyplot as plt
+%matplotlib inline
+plt.style.context('ggplot')
+
+fig = plt.figure()
+ax = fig.add_subplot(111)
+
+'''y value for boxplot'''
+x1 = np.random.normal(0,1,50) 
+x2 = np.random.normal(1,1,50)
+x3 = np.random.normal(2,1,50)
+
+ax.boxplot([x1,x2,x3])
+median_rota = np.median([x1, x2, x3], axis=1) 
+xlabel = [1,2,3]                  
+plt.xticks([1, 2, 3], ['mon', 'tue', 'wed'])
+ax.plot(xlabel, median_rota,  color='orange', lw=2)
+
+'''linestyle = "--", "-.", ":" 
+   marker = "+", "o", "^"             '''
+
+
+plt.show()
