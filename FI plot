@@ -1,0 +1,144 @@
+import sys
+import os
+import glob
+import numpy as np
+import random as rand 
+import matplotlib as mpl
+import matplotlib.pyplot as plt
+%matplotlib inline
+plt.style.context('ggplot')
+'''assrtment of functions
+   read file
+   calculate local maximal=peak
+   find I/V x on/off at 10% rising
+   plot V-Iramp, calculate Rm
+   plot FI relationship and calculate F, fit and slope'''
+
+def readatf(path, filename, ext):
+    
+    file=open(path+filename+'.'+ext, 'r')
+    lines=file.readlines()
+    T=[]
+    I=[]
+    V=[]
+    for line in lines[11:]:
+        T.append(float(line.split('\t')[0]))
+        V.append(float(line.split('\t')[1])+0)
+        I.append(float(line.split('\t')[2].rstrip('\n'))*1)
+    I=[i-I[0] for i in I] # adjust baseline
+    return T, V, I
+    
+def Loc_Max(T, V, I, thres):
+    # 2nd diff before and after peak must be opposite sign
+    # once find peak, jump 60 positions to search beyond peak (60*0.00005s=0.003s=3ms)
+    dx=np.gradient(T)
+    sec_dif=list(np.gradient(V, dx))
+    max_T=[]
+    max_V=[]
+    max_I=[]
+    max_loc=[]
+    step=[]
+    max_num=0
+    posit=0
+    while posit < len(sec_dif)-10:
+        if sec_dif[posit+10]*sec_dif[posit]<0 and max(V[posit:posit+10])>thres:
+            max_posit=V[posit:posit+11].index(max(V[posit:posit+10]))+posit
+            max_loc.append(max_posit)
+            max_T.append(T[max_posit])
+            max_V.append(V[max_posit])
+            max_I.append(I[max_posit])         
+            max_num += 1
+            slp_chg=list(np.diff(sec_dif[max_posit-5:max_posit]))
+            shoot_int=slp_chg.index(max(slp_chg))   # sharpest change in 2ms before peak as start of shoot
+            step.append(round((50-shoot_int)*0.8)) # calculate steps for 20% rise, +1 due to diff=original list-1
+            posit += 60
+        else:
+            posit += 1
+
+    return max_num, max_loc, max_T, max_V, max_I, step
+
+def I_onoff(max_loc, T, V, I, step):
+    # find Ion and Ioff, Von and Voff
+    # step = how many time (step*0.00005s,0.05ms) before peak
+    Ion = I[max_loc[0]-step[0]]
+    Ioff = I[max_loc[-1]-step[-1]]
+    Idiff = Ioff-Ion
+    Von = V[max_loc[0]-step[0]]
+    Voff = V[max_loc[-1]-step[-1]]
+    Vdiff = Voff-Von
+    return Ion, Ioff, Idiff, Von, Voff, Vdiff
+
+    
+    
+def Fit_plot(max_T, max_I):
+    Freq = [abs(1/i) for i in np.diff(max_T)]
+    
+    turn = max(max_I)
+    Acd = max_I[:max_I.index(turn)]  
+    Acd_F = Freq[:max_I.index(turn)]
+    Dcd = max_I[max_I.index(turn):-1]
+    Dcd_F = Freq[max_I.index(turn):]
+    
+    fig=plt.figure(figsize=(8, 8))
+    figa = fig.add_subplot(2,1,1)
+    figa.plot(max_I[:-1], Freq)
+    
+    figa.plot(Acd, Acd_F, "o", label="Acd")
+    figa.plot(Dcd, Dcd_F, "o", label="Dcd")
+    
+    figa.set_xlabel("$I (pA)$")
+    figa.set_ylabel("$Freq (Hz/nA)$")
+    
+    figa.legend(loc='best', frameon=False)
+    
+    plt.savefig('FIrelation.png')
+    
+    
+    Acd_A = np.vstack([Acd, np.ones(len(Acd))]).T
+    Acd_m, Acd_c = np.linalg.lstsq(Acd_A, Acd_F)[0]
+    Acd_m = Acd_m *1000                          # Hz/pA to Hz/nA
+    
+    Dcd_A = np.vstack([Dcd, np.ones(len(Dcd))]).T
+    Dcd_m, Dcd_c = np.linalg.lstsq(Dcd_A, Dcd_F)[0]
+    Dcd_m = Dcd_m *1000                          # Hz/pA to Hz/nA
+    return Freq, Acd_m, Dcd_m
+
+
+def Rm(T, V, I, t1, t2):
+    # t1, t2 in ms, x20 = steps eg 1ms = 20 steps
+    step1 = t1*20           # 0.2-0.5s, 1=0.05ms=0.00005s
+    step2 = t2*20
+    dv=V[step2]-V[step1]
+    di=(I[step2]-I[step1])/1000
+    Ri=dv/di
+    return Ri, dv, di
+    
+
+
+def Plot_VI(T, V, max_T, max_V, max_loc, step):
+    # V I plot with peaks
+    fig=plt.figure(figsize=(8,8))
+    figb = fig.add_subplot(2,1,1)
+    figb.plot(T, V)
+    figb.plot(max_T, max_V, "o", label="peak")
+    figb.plot(T[max_loc[0]-step[0]],V[max_loc[0]-step[0]], "s", label="Ion")
+    figb.plot(T[max_loc[-1]-step[-1]],V[max_loc[-1]-step[-1]], "s", label="Ioff")
+    figb.set_xlabel("$T (s)$")
+    figb.set_ylabel("$V (mV)$")
+    figb.legend(loc='best', frameon=False)
+    plt.savefig('FI.png', dpi=300)
+    plt.show()
+    return
+    
+def FI(path, filename, ext):
+    # auto plot Vclamp, FI plot; detect peaks; calculate Ion, Ioff, Idiff, Von, Voff, Vdiff, slope of linear fit(least square)
+    T, V, I =readatf(path, filename, ext)
+    max_num, max_loc, max_T, max_V, max_I, step = Loc_Max(T, V, I, -10)
+    Ion, Ioff, Idiff, Von, Voff, Vdiff = I_onoff(max_loc, T, V, I, step)
+    Plot_VI(T, V,  max_T, max_V, max_loc, step)
+    Freq, Acd_m, Dcd_m = Fit_plot(max_T, max_I)
+    Ri, dv, di = Rm(T, V, I, 200, 500)
+    
+    print('Ion={0:.2f} pA, Ioff={1:.2f} pA, Idiff={2:.2f} pA; peak nums={3}; Ri={4:.2f}MOhm'.format(Ion, Ioff, Idiff, max_num, Ri))
+    print('Von={0:.2f} mV, Voff={1:.2f} mV, Vdiff={2:.2f} mV'.format(Von, Voff, Vdiff))
+    print('Acd slope={0:.2f} Hz/nA, Dcd slope={1:.2f} Hz/nA'.format(Acd_m, Dcd_m))
