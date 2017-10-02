@@ -1,0 +1,9 @@
+path="C:\\Users\\Steve\\Desktop\\Ephy\\SWK\\0811\\"
+filename="c3_0004_Is"
+ext='atf'
+
+t1=0  # window ms
+t2=50
+
+recording, sweep_num, R = IV(path, filename, ext, t1, t2)
+print('Rm={0:.2f}MOhm'.format(R))
