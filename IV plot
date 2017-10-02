@@ -1,0 +1,67 @@
+import sys
+import os
+import glob
+import numpy as np
+import random as rand 
+import matplotlib as mpl
+import matplotlib.pyplot as plt
+%matplotlib inline
+plt.style.context('ggplot')
+
+
+def IV(path, filename, ext, t1, t2):
+    
+    '''
+    t1, t2 = sampling window in ms
+    assrtment of functions
+    read file
+    identify channel info
+    plot V-Iramp, calculate Rm
+    '''
+    file=open(path+filename+'.'+ext, 'r')
+    lines=file.readlines()
+    record_type=''
+
+    if  "SignalsExported=Vm_primar,Im_sec" in lines[8]: # line10 contain signalexp type,
+        recording='Iclamp'
+    elif  "SignalsExported=Im_primar,Vm_sec" in lines[8]:
+        recording='Vclamp'
+
+    sweep_num=int((len(lines[10].rstrip('\n').split('\t'))-1)/2)  # calculate sweep number
+    data={}
+    dV=[]
+    dI=[]
+    for i in range(sweep_num):                              # creat channel list in data dict
+        data['V{0}'.format(i+1)]=[]
+        data['I{0}'.format(i+1)]=[]
+
+    for line in lines[11:]:                                     # assign values for channels 
+        line=line.rstrip('\n')
+        line_temp=line.split('\t')
+        for i in range(sweep_num):
+            if recording=='Iclamp':
+                data['V{0}'.format(i+1)].append(float(line_temp[2*i+1]))   #V in trace 2,4,6...
+                data['I{0}'.format(i+1)].append(float(line_temp[2*i+2]))
+            elif recording=='Vclamp':
+                data['I{0}'.format(i+1)].append(float(line_temp[2*i+1]))   
+                data['V{0}'.format(i+1)].append(float(line_temp[2*i+2]))   # V in trace 3, 5, 7...
+    for i in range(sweep_num): 
+        dV.append(np.average(data['V{0}'.format(i+1)][t1*20:t2*20]))          #100ms-150ms, 2000-3000
+        dI.append(np.average(data['I{0}'.format(i+1)][t1*20:t2*20]))
+    
+
+    
+    dV_A = np.vstack([dV, np.ones(len(dV))]).T
+    m, c = np.linalg.lstsq(dV_A, dI)[0]    # I=mV+c
+    R=1000/m                        # G to R, pA to nA for MOhm
+    
+    fig=plt.figure(figsize = (10,10))
+    figa = fig.add_subplot(2,1,1)
+    figa.plot(dI, dV)
+    figa.plot(dI, dV, "o", label="IVplot")
+    figa.set_xlabel('$I (pA)$')
+    figa.set_ylabel('$V (mV)$')
+    figa.legend(loc='best', frameon=False)
+    
+    
+    return recording, sweep_num, R
