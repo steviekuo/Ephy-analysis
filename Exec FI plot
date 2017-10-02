@@ -1,0 +1,6 @@
+# specify file location & type
+path="C:\\Users\\Steve\\Desktop\\Ephy\\SWK\\0620\\"
+filename="c2_0011_Ir"
+ext='atf'
+
+FI(path, filename, ext)
